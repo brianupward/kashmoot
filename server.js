@@ -3,6 +3,7 @@
 var app = require('express')();
 var http = require('http').Server(app);
 var io = require('socket.io')(http)
+var port = process.env.PORT || 3000;
 
 const users = {}
 const score = {}
@@ -26,6 +27,10 @@ app.get('/style.css', function(req, res){
 
 app.get('/background.js', function(req, res){  
     res.sendFile(__dirname + '/background.js');
+});
+
+app.listen(port, function () {
+    console.log(`App listening on port !`);
 });
 
 //http.listen(3000, function(){  console.log('listening on *:3000');});
