@@ -1,0 +1,326 @@
+<!-- "StAuth10065: I Brian Upward, 000228103 certify that this material is my original work. No other person's work has been used without due acknowledgement. I have not made my work available to anyone else." -->
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Ka-shmoot</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="X-UA-Compatible" content="ie=edge">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/TweenMax.min.js"></script>
+        <!-- background and animation provided by https://speckyboy.com/css-background-effects/-->        
+        <script defer src="http://localhost:3000/socket.io/socket.io.js"></script>
+        <script defer src="/background.js"></script>        
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>        
+        <link rel="stylesheet" href="style.css">       
+        <link href="https://fonts.googleapis.com/css?family=Luckiest+Guy&display=swap" rel="stylesheet">
+    </head>
+    <body>       
+        
+        <div id="wrapper">                          
+            <div id="clouds"></div>  
+            <div id='class-list'>
+                Leaderboard :
+                <ul id='users'>
+                </ul>
+            </div>     
+            <div id="display"> 
+                <div id='results'>                       
+                    <div id="myModal" class="modal">
+                        <!-- Modal content -->
+                        <div class="modal-content">
+                            <span class="close">&times;</span><br>
+                            <h1>Results</h1>
+                            <p id='stats'></p>
+                            <p id='timeLeft'></p>
+                            <ul id='leftSide'>
+                                <li>Correct</li>                                        
+                            </ul>
+                            <ul id='rightSide'>
+                                <li>Incorrect</li>
+                            </ul>
+                        </div>            
+                    </div>
+                </div>                
+                <div id="questionType">
+                    <p>Select a question type</p>
+                    <br/>
+                    <a href="#" id="multiChoiceSelect">Multiple Choice</a>    <a href="#" id="matchingSelect">Matching</a> 
+                </div> 
+                <div id="matching" style='display:none'> 
+                    <h2>Matching Question</h2>                                     
+                    <form id='matchingForm' autocomplete="off">
+                        Time (s):   <input type='number' id='matchTime' step='5' min='10' max='90' required> Points per match:   <input type='number' id='matchPoints' step='25' min='25' max='500' required><br>
+                        Description<br>
+                        <input type='text' class='question' id='matchingDescription' required>
+                        <input type='button' value='Add Pair' id="addPair">  <input type='button' value='Remove Pair' id='removePair'>                           
+                        <div id='pairList'>
+                            <div id='pair'>
+                                Pair<br>
+                                <input type='text' name='sideA[]' required> <input type='text' name='sideB[]' required><br>
+                            </div>
+                            <div>
+                                Pair<br>
+                                <input type='text' name='sideA[]' required> <input type='text' name='sideB[]' required>
+                            </div>
+                        </div> 
+                        <input type='submit' value='Submit'> <input type='button' value='back' class='backToQuestionSelect'>                          
+                    </form>
+                    
+                </div> 
+                <div id='multipleChoice' style='display:none'>
+                    <h2>Multiple Choice</h2>
+                    <form id='multipleChoiceForm' method='post' autocomplete="off">
+                        Time (s):   <input type='number' id='multiTime' step='5' min='10' max='90' required> Points:   <input type='number' id='multiPoints' step='100' min='100' max='1000' required><br>
+                        Question<br>
+                        <input type='text' class='question' id='multiQuestion' required><br>
+                        <input type='button' value='Add Choice' id="addOption">  <input type='button' value='Remove Choice' id='removeOption'><br>  
+                        Choices<br>
+                        Place checkmark beside correct answer(s)<br>
+                        <div id='optionList'>
+                            <div id='option'>                            
+                                <input type='checkbox' name='checkBox[]'> <input type='text' name='option[]' required><br>
+                            </div>
+                            <div>                            
+                                <input type='checkbox' name='checkBox[]'> <input type='text' name='option[]' required><br>
+                            </div>
+                        </div>
+                        <input type='submit' value='Submit'> <input type='button' value='back' class='backToQuestionSelect'>
+                    </form>
+                    <br>                    
+                </div>                                       
+            </div>                                              
+            <div id="ground"></div>  
+                      
+        </div>
+        
+        <script>        
+            var pairCount = 2; 
+            var optionCount = 2
+
+            $(document).ready(function(){               
+                $("#addPair").click(function(){
+                    $("#pair").clone().find("input").val("").end().appendTo("#pairList");
+                    pairCount++;
+                });
+
+                $("#removePair").click(function(){
+                    if(pairCount > 2){
+                        $("#pair").last().remove();
+                        pairCount--;
+                    }                    
+                }); 
+                
+                $("#addOption").click(function(){
+                    $("#option").clone().find("input").val("").end().appendTo("#optionList");
+                    optionCount++;
+                });
+
+                $("#removeOption").click(function(){
+                    if(optionCount > 2){
+                        $("#option").last().remove();
+                        optionCount--;
+                    }                    
+                }); 
+            })            
+
+            $(function(){
+                var socket = io.connect();  
+                var $users = $('#users');  
+                var $questionType = $('#questionType');
+                var $matching = $('#matching');
+                var $multipleChoice = $('#multipleChoice');            
+                // multiple choice variables
+                var $multipleChoiceForm = $('#multipleChoiceForm');
+                var $multiTime = $('#multiTime');
+                var $multiPoints = $('#multiPoints');
+                var $multiQuestion = $('#multiQuestion');                           
+                // matching variables
+                var $matchingForm = $('#matchingForm');
+                var $matchTime = $('#matchTime');
+                var $matchPoints = $('#matchPoints');
+                var $matchingDescription = $('#matchingDescription');
+                // result variables
+                var $answerCount = 0;
+                var $correctAnswers = 0;
+                // modal vars
+                var $timeLeft = $('#timeLeft');
+                var $leftSide = $('#leftSide');
+                var $rightSide = $('#rightSide');
+                var $stats = $('#stats');
+                // Get the modal
+                var $modal = $('#myModal');
+                var $span = $('.close'); 
+                
+                $('.close').click(function(){
+                    // clear modal
+                    $modal.hide();                    
+                    $leftSide.html('<li>Correct</li>');
+                    $rightSide.html('<li>Incorrect</li>');
+                    $stats.html('');
+                    // return to question select
+                    $matching.hide();
+                    $multipleChoice.hide();
+                    $questionType.show();
+                })
+
+                $("#multiChoiceSelect").click(function(){
+                    $questionType.hide();
+                    $multipleChoice.show();
+                });  
+                
+                $("#matchingSelect").click(function(){                
+                    $questionType.hide();
+                    $matching.show();
+                });
+
+                $(".backToQuestionSelect").click(function(){
+                    // clear values and return to question select
+                    $matching.hide();
+                    $multipleChoice.hide();
+                    $multiQuestion.val('');
+                    $multiTime.val('');
+                    $multiPoints.val('');
+                    $matchingDescription.val('');
+                    $matchTime.val('');
+                    $matchPoints.val('');
+                    $questionType.show();
+                });  
+
+                // send multiple choice question
+                $multipleChoiceForm.submit(function(e){                    
+                    e.preventDefault();
+                    // hide modal and reset counters
+                    $modal.show();
+                    $span.hide();  
+                    $answerCount = 0;
+                    $correctAnswers = 0;                 
+                    // add values to form array to send to server
+                    form = [];
+                    checkBoxArray = []
+                    optionArray = [] 
+                    var $checkBox = $("[name='checkBox[]']")
+                    var $option = $("[name='option[]']");      
+                    form.push($multiQuestion.val()); 
+                    form.push($multiPoints.val());  
+                    form.push($multiTime.val());  
+                    // add options and checkboxes to arrays             
+                    for (i=0; i<$checkBox.length; i++){                        
+                        checkBoxArray.push($checkBox[i].checked);                        
+                        optionArray.push($option[i].value);                       
+                    }
+                    form.push(checkBoxArray);
+                    form.push(optionArray);                  
+                    // clear inputs
+                    $checkBox.prop('checked', false);                    
+                    $option.val('');
+                    $multiQuestion.val('');
+                    // convert to json and send
+                    form = JSON.stringify(form);
+                    socket.emit('multiple choice', form); 
+                    // create timer before being able to close modal                    
+                    var resetTimeLeft = parseInt($multiTime.val()) + 5;
+                    $timeLeft.html(`Time left: ${resetTimeLeft} s`);
+                    var resetTimer = setInterval(function(){                        
+                        resetTimeLeft--;
+                        $timeLeft.html(`Time left: ${resetTimeLeft} s`);
+                        if(resetTimeLeft <= 0){
+                            clearInterval(resetTimer); 
+                            $span.show();
+                            $timeLeft.html('');                    
+                        }
+                    }, 1000);            
+                });  
+                
+                // send matching question
+                $matchingForm.submit(function(e){                    
+                    e.preventDefault();
+                    // hide modal and reset counters
+                    $modal.show();
+                    $span.hide(); 
+                    $answerCount = 0;
+                    $correctAnswers = 0;  
+                    // add values to form array to send to server
+                    form = [];
+                    sideA = []
+                    sideB = [] 
+                    var $a = $("[name='sideA[]']")
+                    var $b = $("[name='sideB[]']");      
+                    form.push($matchingDescription.val()); 
+                    form.push($matchPoints.val());  
+                    form.push($matchTime.val());  
+                    // add options and checkboxes to arrays             
+                    for (i=0; i<$a.length; i++){                        
+                        sideA.push($a[i].value);                        
+                        sideB.push($b[i].value);                       
+                    }
+                    form.push(sideA);
+                    form.push(sideB);                  
+                    // clear inputs
+                    $a.val('');                    
+                    $b.val('');
+                    $multiQuestion.val('');
+                    // convert to json and send
+                    form = JSON.stringify(form);
+                    socket.emit('matching', form); 
+                    // create timer before being able to close modal
+                    var resetTimeLeft = parseInt($matchTime.val()) + 5;   
+                    $timeLeft.html(`Time left: ${resetTimeLeft} s`);                 
+                    var resetTimer = setInterval(function(){                        
+                        resetTimeLeft--;
+                        $timeLeft.html(`Time left: ${resetTimeLeft} s`);
+                        if(resetTimeLeft <= 0){
+                            clearInterval(resetTimer); 
+                            $span.show(); 
+                            $timeLeft.html('');
+                        }
+                    }, 1000);            
+                });  
+
+                // get leaderboard scores
+                socket.on('send scores', function(data){
+                    var html = "";
+                    var userArray = Object.values(data.users);
+                    var scoreArray = Object.values(data.score);
+                    // combine arrays
+                    var list = []
+                    for(j = 0; j < userArray.length; j++){
+                        list.push({'user': userArray[j], 'score': scoreArray[j]});
+                    }
+                    // sort 
+                    list.sort(function(a,b){
+                        return ((a.score > b.score) ? -1 : ((a.score == b.score) ? 0 : 1));
+                    });
+                    // separate
+                    for(var k=0; k < list.length; k++){
+                        userArray[k] = list[k].user;
+                        scoreArray[k] = list[k].score;
+                    }
+                    // display
+                    for(i=0; i< userArray.length; i++){
+                        if(scoreArray[i] == undefined){
+                            html += `<li>${userArray[i]} : 0</li>`;
+                        } else {
+                            html += `<li>${userArray[i]} : ${scoreArray[i]}</li>`;
+                        }
+                        
+                    }
+                    $users.html(html);
+                })
+
+                // show scores and correct answer percentage
+                socket.on('get results', function(data){
+                    $answerCount++;                   
+                    if(data.correct){
+                        $correctAnswers++;
+                        $leftSide.append(`<li>${data.users}</li>`)
+                    } else {
+                        $rightSide.append(`<li>${data.users}</li>`)
+                    }
+                    var percentage = Math.round(($correctAnswers/$answerCount) * 100);
+                    $stats.html(`${$correctAnswers}/${$answerCount} <br> ${percentage}% answered correctly`)
+                })
+            });
+        </script>
+    </body>
+</html>

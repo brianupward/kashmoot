@@ -1,0 +1,269 @@
+<!-- "StAuth10065: I Brian Upward, 000228103 certify that this material is my original work. No other person's work has been used without due acknowledgement. I have not made my work available to anyone else." -->
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Ka-shmoot</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="X-UA-Compatible" content="ie=edge">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/TweenMax.min.js"></script>
+        <!-- background and animation provided by https://speckyboy.com/css-background-effects/-->        
+        <script defer src="http://localhost:3000/socket.io/socket.io.js"></script>
+        <script defer src="/background.js"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+        <link rel="stylesheet" href="style.css">
+        <link href="https://fonts.googleapis.com/css?family=Luckiest+Guy&display=swap" rel="stylesheet">
+        <style>
+        #questionArea{
+            display:none;
+        }
+        </style>
+    </head>
+    <body>
+        <div id="wrapper">
+            <div id="clouds"></div>
+            <div id='class-list'>
+                <span id='myName'></span>
+                Leaderboard :
+                <ul id='users'>
+                </ul>
+            </div>                  
+            <div id="display">
+                <div id="usernameInputArea">
+                    <form id="userForm">
+                        <label>Enter username</label>
+                        <br />
+                        <input type="text" id="username" />
+                        <br />
+                        <input type="submit" value="Begin">
+                    </form>
+                </div>
+                <div id='questionArea'>
+                    <h1 id='question'>Waiting for a question...</h1>                        
+                    <div id='questionParams'></div>
+                    <div id='answerSection'>    
+                        <div id='answers'></div>
+                    </div>
+                </div>                                                                      
+            </div>              
+            <div id="ground"></div>            
+        </div>
+        <script>
+            $(function(){
+                var socket = io.connect();
+                var socketid;
+                var $users = $('#users'); 
+                var $userForm = $('#userForm');                           
+                var $usernameInputArea = $('#usernameInputArea');
+                var $username = $('#username');
+                var $question = $('#question');
+                var $questionArea = $('#questionArea');
+                var $questionParams = $('#questionParams');
+                var $answers = $('#answers')
+                var $myName = $('#myName');
+                var $messageForm = $('#messageForm');
+                var $message = $('#message');
+                var $chat = $('#chat');
+                var multiChoiceArray;
+
+                $messageForm.submit(function(e){
+                    e.preventDefault();                
+                    socket.emit('send message', $message.val());
+                    $message.val('');
+                });
+
+                socket.on('connect', () => {
+                    socketid = socket.id;
+                })
+
+                // receive multiple choice question
+                socket.on('new multiple choice', function(data){                    
+                    multiChoiceArray = JSON.parse(data);
+                    $question.text(multiChoiceArray[0]+'?');
+                    $questionParams.append(`Time: <span id="countdowntimer">${multiChoiceArray[2]} </span> Points: ${multiChoiceArray[1]}<br><br>`)
+                    // append choices to answer section and assign true or false as the class
+                    for(i = 0; i< multiChoiceArray[3].length; i++){
+                        $answers.append(`<a href="#" id='${i}' class='option'>${multiChoiceArray[4][i]}</a>`)
+                        // keep four buttons per line
+                        if((i + 1) % 4 == 0){
+                            $answers.append('<br><br>')
+                        }
+                    }
+                    // create a timer
+                    var timeleft = multiChoiceArray[2];                    
+                    var timer = setInterval(function(){
+                    var answered = false;   
+                        timeleft--;
+                        document.getElementById('countdowntimer').textContent = timeleft;
+                        if(timeleft <= 0){   
+                            // display 'times up' with results on a 3 second timer                          
+                            clearInterval(timer);                                                        
+                            $question.text("Time's up!");
+                            // if question was answered, show the result otherwise clear questionparams
+                            if($answers.text().includes("You answered")){
+                                $questionParams.text($answers.text())
+                            } else {
+                                $questionParams.text('')
+                            }                            
+                            var answers = "";
+                            // loop through to get correct answers
+                            for(a = 0; a<multiChoiceArray[3].length; a++){
+                                if(multiChoiceArray[3][a] == true){
+                                    answers += multiChoiceArray[4][a] + ", ";
+                                }                                
+                            } 
+                            // remove last comma and add to answer section's text
+                            answers = answers.substring(0, answers.length - 2);
+                            $answers.text(`Correct answers: ${answers}`);                             
+                            var resetTimeLeft = 3;                          
+                            var resetTimer = setInterval(function(){
+                                resetTimeLeft--;
+                                if(resetTimeLeft <= 0){
+                                    clearInterval(resetTimer); 
+                                    $question.text('Waiting for next question...'); 
+                                    $questionParams.text(''); 
+                                    $answers.text('');
+                                }
+                            }, 1000);                                                         
+                        } else {
+                            // click listener for multiple choice
+                            $(".option").unbind().click(function(){                                 
+                                // id of answers are set to their index, check against true/false checkbox index to see if the answer is correct
+                                if(multiChoiceArray[3][event.target.id]){
+                                    $answers.text('You answered correctly!');
+                                } else {
+                                    $answers.text('You answered incorrectly!');
+                                }
+                                socket.emit('student answered', { correct : multiChoiceArray[3][event.target.id], points: multiChoiceArray[1], socketid : socketid } )
+                                
+                            });
+                        }
+                    }, 1000);
+                }) 
+
+                // receive matching question
+                socket.on('new matching', function(data){                    
+                    matchingArray = JSON.parse(data);
+                    $question.text(matchingArray[0]);
+                    $questionParams.append(`Time: <span id="countdowntimer">${matchingArray[2]} </span> Points: ${matchingArray[1]}<br><br>`)
+                    $answers.append('<div id="pairs">Match the following<form id="leftPairs"><ul id="leftSide"></ul></form><form id="rightPairs"><ul id="rightSide"></ul></form></div>')
+                    // fill out the left and right sides
+                    var $leftside = $('#leftSide');
+                    var $rightside = $('#rightSide');
+                    var random;
+                    for(i = 0; i< matchingArray[3].length; i++){
+                        $leftside.append(`<li>${matchingArray[3][i]} <input type='radio' name='radioLeft' value='${i}'></li>`)
+                    }
+                    for(i = 0; i< matchingArray[4].length; i++){
+                        random = Math.round(Math.random());
+                        if(random == 1){
+                            $rightside.append(`<li><input type='radio' name='radioRight' value='${i}'> ${matchingArray[4][i]}</li>`)
+                        } else {
+                            $rightside.prepend(`<li><input type='radio' name='radioRight' value='${i}'> ${matchingArray[4][i]}</li>`)
+                        }
+                        
+                    }
+                    // create a timer
+                    var timeleft = matchingArray[2];                    
+                    var timer = setInterval(function(){
+                        var answered = false; 
+                        timeleft--;
+                        document.getElementById('countdowntimer').textContent = timeleft;
+                        if(timeleft <= 0){   
+                            // display 'times up' with results on a 3 second timer                          
+                            clearInterval(timer);                                                        
+                            $question.text("Time's up!"); 
+                            $questionParams.text(''); 
+                            var answers = "Matching Pairs<br><ul>";
+                            // loop through to get correct answers
+                            for(a = 0; a<matchingArray[3].length; a++){
+                                answers += `<li>${matchingArray[3][a]} <-> ${matchingArray[4][a]}</li>`                               
+                            }
+                            answers += "</ul>" 
+                            // show matching pairs
+                            $answers.html(`${answers}`);                              
+                            var resetTimeLeft = 5;                          
+                            var resetTimer = setInterval(function(){
+                                resetTimeLeft--;
+                                if(resetTimeLeft <= 0){
+                                    clearInterval(resetTimer); 
+                                    $question.text('Waiting for next question...'); 
+                                    $questionParams.text(''); 
+                                    $answers.text('');                                   
+                                }
+                            }, 1000);                                                         
+                        } else {
+                            // click listener for matching pairs
+                            $("input[type='radio'").unbind().click(function(){  
+                                // grab values and closest tags of selected matches to compare and destroy
+                                var leftRadioChecked = $('input[name="radioLeft"]:checked').val();                                
+                                var rightRadioChecked = $('input[name="radioRight"]:checked').val();
+                                var leftRadioID = $('input[name="radioLeft"]:checked').closest('li');
+                                var rightRadioID = $('input[name="radioRight"]:checked').closest('li');
+                                
+                                // compare values to see if we have a match
+                                if(leftRadioChecked != undefined && rightRadioChecked != undefined){
+                                    if(leftRadioChecked == rightRadioChecked){
+                                        socket.emit('student answered', { correct : true, points: matchingArray[1], socketid : socketid })
+                                        leftRadioID.remove();
+                                        rightRadioID.remove();
+                                    } else {
+                                        socket.emit('student answered', { correct : false, points: matchingArray[1], socketid : socketid })
+                                        leftRadioID.remove();
+                                        rightRadioID.remove();                                     
+                                    }
+                                }                                    
+                            });
+                        }
+                    }, 1000);
+                }) 
+                
+                // get leaderboard scores
+                socket.on('send scores', function(data){
+                    var html = "";
+                    var userArray = Object.values(data.users);
+                    var scoreArray = Object.values(data.score);
+                    // combine arrays
+                    var list = []
+                    for(j = 0; j < scoreArray.length; j++){
+                        list.push({'user': userArray[j], 'score': scoreArray[j]});
+                    }
+                    // sort 
+                    list.sort(function(a,b){
+                        return ((a.score > b.score) ? -1 : ((a.score == b.score) ? 0 : 1));
+                    });
+                    
+                    // separate
+                    for(var k=0; k < list.length; k++){
+                        userArray[k] = list[k].user;
+                        scoreArray[k] = list[k].score;
+                    }
+                    
+                    // display
+                    for(i=0; i< userArray.length; i++){
+                        if(scoreArray[i] == undefined){
+                            html += `<li>${userArray[i]} : 0</li>`;
+                        } else {
+                            html += `<li>${userArray[i]} : ${scoreArray[i]}</li>`;
+                        }
+                    }
+                    $users.html(html);
+                })
+
+                // send username and wait for question
+                $userForm.submit(function(e){
+                    e.preventDefault();
+                    socket.emit('new user', { username : $username.val(), socketid: socketid }, function(data){
+                        if(data){
+                            $usernameInputArea.hide();
+                            $questionArea.show();
+                        }
+                    });
+                    $myName.append(`Playing as ${$username.val()}<br>`);
+                    $username.val('');
+                });
+            });
+        </script>
+    </body>
+</html>
