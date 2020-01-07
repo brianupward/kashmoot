@@ -28,7 +28,7 @@ app.get('/background.js', function(req, res){
     res.sendFile(__dirname + '/background.js');
 });
 
-http.listen(3000, function(){  console.log('listening on *:3000');});
+//http.listen(3000, function(){  console.log('listening on *:3000');});
 
 io.on('connection', socket => {  
     connections.push(socket); 
