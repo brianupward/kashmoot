@@ -6,13 +6,10 @@
   "scripts": {
     "devStart": "nodemon server.js"
   },
-  "dependencies": {
-    "express":"*",
-    "body-parser":"*"
-  },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "express": "^4.17.1",
     "socket.io": "^2.3.0"
   }
 }
